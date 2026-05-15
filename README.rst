@@ -5,11 +5,12 @@ OTel Injector Demo
 Overview
 ========
 
-This project demonstrates a minimal OpenTelemetry auto-instrumentation setup
-using an OpenTelemetry Collector and a Node.js HTTP application.
+This project demonstrates minimal OpenTelemetry auto-instrumentation setups
+using an OpenTelemetry Collector and sample applications in multiple
+languages.
 
-The purpose of this demo is to prove that telemetry can be injected into an
-application automatically and exported successfully without modifying the
+The purpose of this demo is to prove that telemetry can be injected into
+applications automatically and exported successfully without modifying the
 application code itself.
 
 The telemetry flow looks like this:
@@ -17,7 +18,7 @@ The telemetry flow looks like this:
 ::
 
     +-------------------+
-    | Node.js App       |
+    | Application       |
     | (HTTP server)     |
     +-------------------+
               |
@@ -42,7 +43,7 @@ The telemetry flow looks like this:
 
 This demo proves that:
 
-- The application is being instrumented successfully
+- Applications are being instrumented successfully
 - Traces are being generated automatically
 - Telemetry reaches the Collector
 - The Collector processes telemetry correctly
@@ -52,26 +53,64 @@ No tracing logic exists in the application source code.
 
 The telemetry is injected externally.
 
+Available Implementations
+=========================
+
+This repository contains working examples in multiple languages:
+
+Node.js Implementation
+----------------------
+
+Located in the ``node/`` directory.
+
+Demonstrates auto-instrumentation of a Node.js HTTP server.
+
+Python Implementation
+---------------------
+
+Located in the ``python/`` directory.
+
+Demonstrates auto-instrumentation of a Flask application.
+
+Both implementations follow the same architecture and prove the same
+concepts.
+
 Project Structure
 =================
 
-This repository contains the following files:
+The repository is organized by language:
 
 ::
 
     .
-    ├── app.js
-    ├── package.json
-    ├── docker-compose.yml
-    └── collector-config.yaml
+    ├── README.rst
+    ├── node/
+    │   ├── app.js
+    │   ├── package.json
+    │   ├── docker-compose.yml
+    │   └── collector-config.yaml
+    └── python/
+        ├── app.py
+        ├── docker-compose.yml
+        ├── collector-config.yaml
+        └── .gitignore
+
+Each language directory contains:
+
+- Application source code
+- Docker Compose configuration
+- OpenTelemetry Collector configuration
 
 Component Breakdown
 ===================
 
-app.js
-======
+Application Files
+=================
 
-This is a minimal Node.js HTTP server.
+Node.js: app.js
+---------------
+
+A minimal Node.js HTTP server using the built-in ``http`` module.
 
 Source:
 
@@ -89,18 +128,45 @@ Source:
       console.log("listening on port 3000");
     });
 
-What this application does
---------------------------
+Python: app.py
+--------------
 
-- Creates a simple HTTP server
-- Listens on port 3000
-- Prints a message whenever a request arrives
-- Returns a plain text response
+A minimal Flask HTTP server.
+
+Source:
+
+::
+
+    from flask import Flask
+
+    app = Flask(__name__)
+
+
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def hello(path: str) -> tuple[str, int, dict[str, str]]:
+        print("received request", flush=True)
+        return "hello from otel injector\\n", 200, {
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+
+
+    if __name__ == "__main__":
+        print("listening on port 3000", flush=True)
+        app.run(host="0.0.0.0", port=3000)
+
+What these applications do
+---------------------------
+
+- Create simple HTTP servers
+- Listen on port 3000
+- Print messages when requests arrive
+- Return plain text responses
 
 Important observation
 ---------------------
 
-The application contains:
+Both applications contain:
 
 - No OpenTelemetry SDK imports
 - No tracing code
@@ -113,21 +179,6 @@ If traces appear later in the Collector logs, then the instrumentation was
 added externally by the injector.
 
 That is the entire point of this demo.
-
-package.json
-============
-
-Minimal Node.js metadata file:
-
-::
-
-    {
-      "name": "otel-injector-demo",
-      "version": "1.0.0"
-    }
-
-This exists primarily so the Node.js environment behaves like a normal Node
-project.
 
 collector-config.yaml
 =====================
@@ -284,14 +335,14 @@ Instead:
 
 automatically instruments frameworks and libraries.
 
-In this demo, the injector instruments the Node.js HTTP server automatically.
+In these demos, the injector instruments the HTTP servers automatically.
 
 Why This Demo Matters
 =====================
 
 This project demonstrates something extremely important:
 
-The application itself has NO telemetry code.
+The applications themselves have NO telemetry code.
 
 Yet spans still appear.
 
@@ -310,7 +361,7 @@ How the Demo Works Internally
 Step 1
 ======
 
-The Node.js app starts.
+The application starts.
 
 It only creates an HTTP server.
 
@@ -377,6 +428,20 @@ This proves the telemetry pipeline is functioning correctly.
 How to Run
 ===========
 
+Choose an implementation directory:
+
+Node.js:
+
+::
+
+    cd node
+
+Python:
+
+::
+
+    cd python
+
 Start the containers:
 
 ::
@@ -420,14 +485,14 @@ The Collector should print spans similar to:
     Traces
     ResourceSpans #0
 
-    -> service.name: Str(otel-injector-demo)
+    -> service.name: Str(otel-injector-demo-*)
 
 This is the key proof.
 
 Why This Output Matters
 =======================
 
-The Node.js application never created spans manually.
+The applications never created spans manually.
 
 Yet the Collector received spans.
 
@@ -447,7 +512,13 @@ service.name
 
 ::
 
-    service.name: Str(otel-injector-demo)
+    service.name: Str(otel-injector-demo-node)
+
+or:
+
+::
+
+    service.name: Str(otel-injector-demo-python)
 
 This identifies the service producing telemetry.
 
@@ -509,5 +580,6 @@ This demo proves that:
 - OTLP transport works
 - The injector successfully activates instrumentation
 - No application tracing code is required
+- The same approach works across multiple languages
 
 This is the foundation of modern observability platforms.
