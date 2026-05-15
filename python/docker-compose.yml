@@ -1,0 +1,38 @@
+services:
+  app:
+    image: python:3.12-bookworm
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command:
+      - sh
+      - -c
+      - |
+        apt-get update &&
+        apt-get install -y curl ca-certificates &&
+        curl -L -o /tmp/opentelemetry-injector.deb https://github.com/open-telemetry/opentelemetry-injector/releases/download/v0.8.0/opentelemetry-injector_0.8.0_amd64.deb &&
+        apt-get install -y /tmp/opentelemetry-injector.deb &&
+        pip install --no-cache-dir flask &&
+        LD_PRELOAD=/usr/lib/opentelemetry/libotelinject.so python app.py
+    ports:
+      - "3000:3000"
+    environment:
+      OTEL_SERVICE_NAME: otel-injector-demo-python
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_INJECTOR_LOG_LEVEL: debug
+    depends_on:
+      - collector
+
+  collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command:
+      - "--config=/etc/otelcol/config.yaml"
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
