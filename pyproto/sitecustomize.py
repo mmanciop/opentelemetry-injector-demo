@@ -16,9 +16,9 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-from opentelemetry.exporter.otlp.pyproto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.pyproto.http._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.pyproto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.pyproto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.pyproto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.pyproto.grpc.metric_exporter import OTLPMetricExporter
 
 resource = Resource.create({"service.name": "pyproto-demo"})
 
@@ -43,4 +43,4 @@ metrics.set_meter_provider(meter_provider)
 RequestsInstrumentor().instrument()
 LoggingInstrumentor().instrument(set_logging_format=True)
 
-print("agent: pyproto OTLP exporter configured (no google.protobuf)", flush=True)
+print("agent: pyproto OTLP gRPC exporter configured (no google.protobuf)", flush=True)
