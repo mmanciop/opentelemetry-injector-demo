@@ -39,6 +39,8 @@ Each top-level directory is one standalone example:
 | `python-json-file/` | `LD_PRELOAD` + opentelemetry-injector `.deb` | Exports to `.jsonl` file; proves `google.protobuf` is NOT needed |
 | `node/` | `LD_PRELOAD` + opentelemetry-injector `.deb` | Node.js baseline example |
 | `no_protobuf/` | PYTHONPATH + `sitecustomize.py` | Pure-Python lite OTLP exporter; zero `google.protobuf` dependency |
+| `pyproto-http/` | PYTHONPATH + `sitecustomize.py` | `opentelemetry-exporter-otlp-pyproto-http`; pure-Python protobuf, OTLP/HTTP |
+| `pyproto-grpc/` | PYTHONPATH + `sitecustomize.py` | `opentelemetry-exporter-otlp-pyproto-grpc`; pure-Python protobuf, OTLP/gRPC |
 | `middle_exporter/` | PYTHONPATH + `sitecustomize.py` | Sidecar process handles protobuf; app ships msgpack over TCP |
 | `rename_dependencies/` | PYTHONPATH + `sitecustomize.py` | Demonstrates injected library vs app version conflict isolation |
 
