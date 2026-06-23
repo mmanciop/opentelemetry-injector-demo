@@ -18,58 +18,100 @@ OUT="$REPO/compare-output"
 
 log() { echo; echo "=== $* ==="; }
 
-# Normalise one signal file for comparison. Strips or sorts everything that
-# legitimately differs between two runs of the same app:
-#   • OTLP IDs (traceId, spanId, parentSpanId) and all *UnixNano timestamps
-#   • Histogram timing values (sum, min, max, bucketCounts, explicitBounds)
-#   • duration_ms event attribute — actual HTTP latency, changes every run
-#   • otelSpanID / otelTraceID / otelTraceSampled — trace IDs injected by the
-#     logging instrumentation into log record attributes
-#   • Sorts spans by name, log records by (severity, body), attributes by key,
-#     and span events by name — so ordering differences don't cause false diffs
-#   • Normalises service.name to SCENARIO so scenario names don't matter
+# Normalise one signal file for a schema-level comparison that ignores all
+# legitimate run-to-run variation. Signal-specific flattening avoids false
+# diffs caused by different OTLP batch boundaries between runs.
+#
+# Traces  — flatten to [span], keep name/kind/status/attribute-keys/events,
+#           strip all IDs, timestamps, and timing values (duration_ms).
+# Metrics — flatten to [metric], keep name/unit/type/is_monotonic and the SET
+#           of attribute keys per metric; strip all data-point values (they
+#           depend on export timing and change every run).
+# Logs    — flatten to [record], keep severity/body/attributes (minus trace
+#           IDs injected by the logging instrumentation), sort stably.
+#
+# After flattening, sort everything so order-of-arrival doesn't matter.
+# Scenario name (pyprotobuf-demo / protobuf-demo) and working-dir path
+# (/app/pyprotobuf/ vs /app/protobuf/) are normalised via sed.
+
+normalize_traces() {
+    jq -rs '
+      [
+        .[] | .resourceSpans[] as $rs | $rs.scopeSpans[] as $ss | $ss.spans[] |
+        {
+          "resource": ($rs.resource.attributes // [] | sort_by(.key)),
+          "scope":    $ss.scope.name,
+          "name":     .name,
+          "kind":     .kind,
+          "status":   .status,
+          "attributes": (.attributes // [] |
+            map(select(.key != "duration_ms")) | sort_by(.key)),
+          "events": (.events // [] | map({
+            "name": .name,
+            "attributes": (.attributes // [] |
+              map(select(.key != "duration_ms")) | sort_by(.key))
+          }) | sort_by(.name))
+        }
+      ] | sort_by([.name, (.attributes | tostring)])
+    '
+}
+
+normalize_metrics() {
+    jq -rs '
+      [
+        .[] | .resourceMetrics[] as $rm | $rm.scopeMetrics[] | .metrics[] |
+        {
+          "resource": ($rm.resource.attributes // [] | sort_by(.key)),
+          "name":     .name,
+          "unit":     .unit,
+          "type": (
+            if has("sum")       then "Sum"
+            elif has("gauge")   then "Gauge"
+            elif has("histogram") then "Histogram"
+            else "Unknown" end),
+          "is_monotonic": (.sum.isMonotonic // null),
+          "temporality":  (.sum.aggregationTemporality //
+                           .histogram.aggregationTemporality // null),
+          "data_point_attribute_keys": (
+            (.sum.dataPoints // .gauge.dataPoints //
+             .histogram.dataPoints // []) |
+            [.[].attributes // [] | .[].key] | sort | unique)
+        }
+      ] | sort_by(.name)
+    '
+}
+
+normalize_logs() {
+    jq -rs '
+      [
+        .[] | .resourceLogs[] | .scopeLogs[] | .logRecords[] |
+        {
+          "severityNumber": .severityNumber,
+          "severityText":   .severityText,
+          "body":           .body,
+          "attributes": (.attributes // [] |
+            map(select(
+              .key != "otelSpanID" and
+              .key != "otelTraceID" and
+              .key != "otelTraceSampled"
+            )) | sort_by(.key))
+        }
+      ] | sort_by([
+        .severityNumber,
+        (.body.stringValue // ""),
+        (.attributes | tostring)
+      ])
+    '
+}
+
 normalize() {
     local file=$1
-    jq -rs '
-      [ .[] |
-        walk(
-          if type == "object" then
-            # Strip time-varying OTLP fields
-            del(.traceId, .spanId, .parentSpanId,
-                .startTimeUnixNano, .endTimeUnixNano,
-                .timeUnixNano, .observedTimeUnixNano) |
-            # Strip histogram timing buckets
-            if has("bucketCounts") then
-              del(.sum, .min, .max, .bucketCounts, .explicitBounds)
-            else . end |
-            # Strip and sort attribute arrays
-            if has("attributes") then
-              .attributes = (.attributes |
-                map(select(
-                  .key != "duration_ms" and
-                  .key != "otelSpanID" and
-                  .key != "otelTraceID" and
-                  .key != "otelTraceSampled"
-                )) |
-                sort_by(.key))
-            else . end |
-            # Sort span events by name; sort their attributes too
-            if has("events") then
-              .events |= (map(.attributes |= sort_by(.key)) | sort_by(.name))
-            else . end |
-            # Sort spans by name for deterministic ordering across batches
-            if has("spans") then
-              .spans |= sort_by(.name)
-            else . end |
-            # Sort log records by (severity, body) for deterministic ordering
-            if has("logRecords") then
-              .logRecords |= sort_by([.severityNumber, (.body.stringValue // "")])
-            else . end
-          else . end
-        )
-      ] | sort_by(tostring)
-    ' "$file" \
-    | sed 's/pyprotobuf-demo/SCENARIO/g; s/protobuf-demo/SCENARIO/g'
+    local signal
+    signal="$(basename "$file" .json)"
+    "normalize_${signal}" < "$file" \
+      | sed 's/pyprotobuf-demo/SCENARIO/g; s/protobuf-demo/SCENARIO/g
+             s|/app/pyprotobuf/|/app/SCENARIO/|g
+             s|/app/protobuf/|/app/SCENARIO/|g'
 }
 
 run_scenario() {
