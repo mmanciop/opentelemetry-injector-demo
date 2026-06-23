@@ -59,6 +59,9 @@ run_scenario() {
 log "Setup"
 rm -rf "$OUT"
 mkdir -p "$OUT/pyprotobuf" "$OUT/protobuf"
+# The otel-collector-contrib image runs as uid 10001; make output dirs world-writable
+# so it can create the trace/metric/log JSON files inside them.
+chmod 777 "$OUT/pyprotobuf" "$OUT/protobuf"
 # Pre-create python-agent dirs as the host user so Docker bind-mounts don't
 # recreate them as root (which would deny writes from the non-root container user).
 mkdir -p "$REPO/pyprotobuf/python-agent" "$REPO/protobuf/python-agent"
