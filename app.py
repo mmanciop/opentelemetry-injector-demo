@@ -32,6 +32,15 @@ request_duration = meter.create_histogram(
     description="Duration of outbound HTTP requests",
 )
 
+# Synthetic histogram with fixed per-outcome values so compare.sh can verify
+# full histogram encoding (count, sum, min, max, bucketCounts) deterministically
+# across runs without depending on real network timing.
+request_size = meter.create_histogram(
+    "app.request_size",
+    unit="By",
+    description="Simulated request payload size (fixed synthetic values for deterministic comparison)",
+)
+
 # ObservableGauge — exercises async instrument + float value encoding
 def observe_memory(_options):
     yield metrics.Observation(42.5, {"unit": "MB"})
@@ -68,6 +77,7 @@ for index in range(10):
 
             request_counter.add(1, {"http.status_code": str(response.status_code)})
             request_duration.record(duration_ms, {"http.status_code": str(response.status_code)})
+            request_size.record(512, {"result": "success"})
             active_requests.add(-1, {"phase": "in-flight"})
 
             span.add_event("request.done", {
@@ -83,6 +93,7 @@ for index in range(10):
             print(f"app: request {index} -> {response.status_code}", flush=True)
 
         except Exception as exc:
+            request_size.record(64, {"result": "error"})
             active_requests.add(-1, {"phase": "in-flight"})
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))

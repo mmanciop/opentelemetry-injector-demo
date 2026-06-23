@@ -60,22 +60,36 @@ normalize_metrics() {
     jq -rs '
       [
         .[] | .resourceMetrics[] as $rm | $rm.scopeMetrics[] | .metrics[] |
+        # Timing-based histograms: compare schema only (count + bucket boundaries),
+        # not sum/min/max/bucketCounts which depend on real network latency.
+        # app.request_size uses fixed synthetic values, so its full data is compared.
+        . as $metric |
         {
           "resource": ($rm.resource.attributes // [] | sort_by(.key)),
           "name":     .name,
           "unit":     .unit,
           "type": (
-            if has("sum")       then "Sum"
-            elif has("gauge")   then "Gauge"
+            if has("sum")         then "Sum"
+            elif has("gauge")     then "Gauge"
             elif has("histogram") then "Histogram"
             else "Unknown" end),
           "is_monotonic": (.sum.isMonotonic // null),
           "temporality":  (.sum.aggregationTemporality //
                            .histogram.aggregationTemporality // null),
-          "data_point_attribute_keys": (
-            (.sum.dataPoints // .gauge.dataPoints //
-             .histogram.dataPoints // []) |
-            [.[].attributes // [] | .[].key] | sort | unique)
+          "data_points": (
+            if has("sum") or has("gauge") then
+              (.sum.dataPoints // .gauge.dataPoints // []) |
+              map({ "attributes": (.attributes // [] | sort_by(.key)), "value": (.asInt // .asDouble) }) |
+              sort_by((.attributes | tostring))
+            elif has("histogram") then
+              (.histogram.dataPoints // []) |
+              if ($metric.name == "app.request_duration" or $metric.name == "http.client.duration") then
+                map({ "attributes": (.attributes // [] | sort_by(.key)), "count": .count, "bounds": (.explicitBounds // []) })
+              else
+                map({ "attributes": (.attributes // [] | sort_by(.key)), "count": .count, "sum": .sum, "min": .min, "max": .max, "bounds": (.explicitBounds // []), "buckets": (.bucketCounts // []) })
+              end |
+              sort_by((.attributes | tostring))
+            else [] end)
         }
       ] | sort_by(.name)
     '
