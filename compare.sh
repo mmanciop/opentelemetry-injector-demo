@@ -5,11 +5,11 @@
 # Requirements: Docker with Compose plugin v2.7+, jq
 set -euo pipefail
 
-# Export UID/GID so docker compose can run prepare-python-agent as the host user.
-# UID is a bash read-only built-in — export it without reassigning; set GID explicitly.
-export UID
-export GID
-GID="$(id -g)"
+# Pass host UID/GID to docker compose so prepare-python-agent writes files as the
+# host user. Bash's $UID is read-only and not reliably exported, so we use our own
+# variable names that docker-compose.yml references via ${SCRIPT_UID}:${SCRIPT_GID}.
+export SCRIPT_UID="$(id -u)"
+export SCRIPT_GID="$(id -g)"
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
 OUT="$REPO/compare-output"
